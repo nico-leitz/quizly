@@ -31,6 +31,7 @@ if not SECRET_KEY:
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.getenv("DEBUG", "False") == "True"
+AUTH_COOKIE_SECURE = os.getenv("COOKIE_SECURE", "True") == "True"
 
 ALLOWED_HOSTS = []
 
