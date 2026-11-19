@@ -4,7 +4,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
-from .serializers import RegistrationSerializer, LoginSerializer
+from .serializers import RegistrationSerializer, LoginSerializer, CookieTokenRefreshSerializer
 from rest_framework_simplejwt.exceptions import TokenError
 from django.conf import settings
 
@@ -103,4 +103,35 @@ class LogoutView(APIView):
         )
         response.delete_cookie("access_token")
         response.delete_cookie("refresh_token")
+        return response
+
+
+class CookieTokenRefreshView(generics.GenericAPIView):
+    serializer_class = CookieTokenRefreshSerializer
+    authentication_classes = []
+    permission_classes = [AllowAny]
+
+    def post(self, request, *args, **kwargs):
+        refresh_token = request.COOKIES.get("refresh_token")
+        serializer = self.get_serializer(data={"refresh": refresh_token})
+
+        if not serializer.is_valid():
+            return Response(
+                {"detail": "Refresh token is invalid or missing."},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+
+        access_token = serializer.validated_data["access"]
+
+        response = Response(
+            {"detail": "Token refreshed"},
+            status=status.HTTP_200_OK,
+        )
+        response.set_cookie(
+            key="access_token",
+            value=access_token,
+            httponly=True,
+            secure=settings.AUTH_COOKIE_SECURE,
+            samesite="Lax",
+        )
         return response
