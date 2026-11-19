@@ -1,9 +1,11 @@
 from rest_framework import generics, status
 from django.contrib.auth import authenticate
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 from .serializers import RegistrationSerializer, LoginSerializer
+from rest_framework_simplejwt.exceptions import TokenError
 from django.conf import settings
 
 
@@ -76,4 +78,29 @@ class LoginView(generics.GenericAPIView):
             secure=settings.AUTH_COOKIE_SECURE,
             samesite="Lax",
         )
+        return response
+
+
+
+class LogoutView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        refresh_token = request.COOKIES.get("refresh_token")
+
+        if refresh_token:
+            try:
+                token = RefreshToken(refresh_token)
+                token.blacklist()
+            except TokenError:
+                pass
+
+        response = Response(
+            {
+                "detail": "Log-Out successfully! All Tokens will be deleted. Refresh token is now invalid."
+            },
+            status=status.HTTP_200_OK,
+        )
+        response.delete_cookie("access_token")
+        response.delete_cookie("refresh_token")
         return response
