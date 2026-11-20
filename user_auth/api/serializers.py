@@ -16,9 +16,9 @@ class RegistrationSerializer(serializers.ModelSerializer):
         }
 
     def validate_email(self, value):
-        if User.objects.filter(email=value).exists():
+        if User.objects.filter(email__iexact=value).exists():
             raise serializers.ValidationError("A user with this email already exists.")
-        return value
+        return value.lower()
 
     def validate(self, attrs):
         if attrs["password"] != attrs["confirmed_password"]:
@@ -39,7 +39,6 @@ class RegistrationSerializer(serializers.ModelSerializer):
 class LoginSerializer(serializers.Serializer):
     username = serializers.CharField()
     password = serializers.CharField(write_only=True)
-
 
 
 class CookieTokenRefreshSerializer(serializers.Serializer):
