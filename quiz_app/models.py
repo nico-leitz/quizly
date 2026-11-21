@@ -3,6 +3,8 @@ from django.db import models
 
 
 class Quiz(models.Model):
+    """Store a generated quiz linked to a user and a YouTube video."""
+
     user = models.ForeignKey(
         User,
         on_delete=models.CASCADE,
@@ -19,10 +21,13 @@ class Quiz(models.Model):
         ordering = ["-created_at"]
 
     def __str__(self):
+        """Return the quiz title as string representation."""
         return self.title
 
 
 class Question(models.Model):
+    """Store a single multiple-choice question belonging to a quiz."""
+
     quiz = models.ForeignKey(
         Quiz,
         on_delete=models.CASCADE,
@@ -38,4 +43,5 @@ class Question(models.Model):
         ordering = ["id"]
 
     def __str__(self):
+        """Return the question title as string representation."""
         return self.question_title
