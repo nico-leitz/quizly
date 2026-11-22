@@ -13,7 +13,7 @@ import whisper
 import yt_dlp
 from django.db import transaction
 from google import genai
-from google.genai import types
+from google.genai import errors, types
 
 from quiz_app.models import Question, Quiz
 
@@ -31,6 +31,12 @@ YDL_BASE_OPTIONS = {
     "noplaylist": True,
     "postprocessors": [FFMPEG_AUDIO_POSTPROCESSOR],
 }
+
+GEMINI_FLASH_MODELS = (
+    "gemini-3.8-flash",
+    "gemini-flash-latest",
+    "gemini-flash-lite-latest",
+)
 
 QUIZ_PROMPT_TEMPLATE = (
     "Based on the following transcript, generate a quiz in valid JSON "
@@ -134,6 +140,20 @@ def get_gemini_client() -> genai.Client:
     return genai.Client(api_key=api_key)
 
 
+def request_quiz_json(client: genai.Client, prompt: str) -> str:
+    """Call Gemini Flash with automatic model fallback on API errors."""
+    config = types.GenerateContentConfig(response_mime_type="application/json")
+    last_error = None
+    for model in GEMINI_FLASH_MODELS:
+        try:
+            res = client.models.generate_content(
+                model=model, contents=prompt, config=config)
+            return res.text
+        except errors.APIError as exc:
+            last_error = exc
+    raise last_error
+
+
 def generate_quiz_from_transcript(transcript: str) -> dict:
     """Generate quiz JSON from a transcript via Gemini Flash.
 
@@ -143,11 +163,8 @@ def generate_quiz_from_transcript(transcript: str) -> dict:
         dict: Parsed quiz data (title, description, questions).
     """
     client = get_gemini_client()
-    config = types.GenerateContentConfig(response_mime_type="application/json")
     prompt = build_quiz_prompt(transcript)
-    response = client.models.generate_content(
-        model="gemini-3.8-flash", contents=prompt, config=config)
-    return json.loads(response.text)
+    return json.loads(request_quiz_json(client, prompt))
 
 
 def create_quiz_data_from_youtube(video_url: str) -> dict:
