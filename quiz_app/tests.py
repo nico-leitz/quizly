@@ -1,13 +1,18 @@
-from unittest.mock import patch
+"""Automated API, model, and utility tests for quiz_app."""
+
+import json
+import os
+from unittest.mock import MagicMock, patch
 
 from django.contrib.auth.models import User
-from django.test import override_settings
+from django.test import TestCase, override_settings
 from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APITestCase
 from rest_framework_simplejwt.tokens import RefreshToken
 from yt_dlp.utils import DownloadError
 
+from quiz_app.api import utils
 from quiz_app.models import Question, Quiz
 
 MOCK_QUIZ_DATA = {
@@ -44,16 +49,12 @@ class QuizApiTests(APITestCase):
     def create_quiz(self, user, title):
         """Create a quiz with one question for a given user."""
         quiz = Quiz.objects.create(
-            user=user,
-            title=title,
-            description="Sample description",
+            user=user, title=title, description="Sample description",
             video_url="https://www.youtube.com/watch?v=dQw4w9WgXcQ",
         )
         Question.objects.create(
-            quiz=quiz,
-            question_title="Sample Question?",
-            question_options=["A", "B", "C", "D"],
-            answer="A",
+            quiz=quiz, question_title="Sample Question?",
+            question_options=["A", "B", "C", "D"], answer="A",
         )
         return quiz
 
@@ -197,3 +198,83 @@ class QuizApiTests(APITestCase):
         self.assertEqual(self.client.get(url).status_code, 401)
         self.assertEqual(self.client.patch(url, {}).status_code, 401)
         self.assertEqual(self.client.delete(url).status_code, 401)
+
+
+class QuizUtilsAndModelTests(TestCase):
+    """Unit tests for model string methods and quiz_app pipeline utils."""
+
+    def test_model_str_representations(self):
+        """Quiz and Question __str__ methods return their titles."""
+        user = User.objects.create_user(username="u1", password="pw123456!")
+        quiz = Quiz.objects.create(
+            user=user, title="My Quiz", video_url="https://youtu.be/abc"
+        )
+        question = Question.objects.create(
+            quiz=quiz, question_title="My Q?", answer="A"
+        )
+        self.assertEqual(str(quiz), "My Quiz")
+        self.assertEqual(str(question), "My Q?")
+
+    @patch("quiz_app.api.utils.whisper.load_model")
+    def test_get_whisper_model_caches_instance(self, mock_load):
+        """Whisper model is loaded once and cached for subsequent calls."""
+        utils._whisper_model = None
+        self.addCleanup(setattr, utils, "_whisper_model", None)
+        first = utils.get_whisper_model()
+        second = utils.get_whisper_model()
+        self.assertIs(first, second)
+        mock_load.assert_called_once_with("base")
+
+    @patch("quiz_app.api.utils.yt_dlp.YoutubeDL")
+    def test_download_audio_returns_mp3_path(self, mock_ydl_cls):
+        """download_audio invokes yt-dlp and returns the MP3 file path."""
+        mock_ydl = mock_ydl_cls.return_value.__enter__.return_value
+        path = utils.download_audio("https://youtu.be/abc", "/tmp")
+        mock_ydl.download.assert_called_once_with(["https://youtu.be/abc"])
+        self.assertEqual(path, os.path.join("/tmp", "audio.mp3"))
+
+    @patch("quiz_app.api.utils.get_whisper_model")
+    def test_transcribe_audio_strips_text(self, mock_get_model):
+        """transcribe_audio returns stripped transcript text."""
+        mock_model = mock_get_model.return_value
+        mock_model.transcribe.return_value = {"text": "  Hello world  "}
+        result = utils.transcribe_audio("/tmp/audio.mp3")
+        self.assertEqual(result, "Hello world")
+
+    @patch.dict(os.environ, {}, clear=True)
+    def test_get_gemini_client_missing_api_key(self):
+        """Missing GEMINI_API_KEY raises a ValueError."""
+        with self.assertRaises(ValueError):
+            utils.get_gemini_client()
+
+    @patch.dict(os.environ, {"GEMINI_API_KEY": "fake-key"})
+    @patch("quiz_app.api.utils.genai.Client")
+    def test_generate_quiz_from_transcript(self, mock_client_cls):
+        """Gemini response JSON is parsed into a quiz dictionary."""
+        mock_response = MagicMock(text=json.dumps(MOCK_QUIZ_DATA))
+        mock_client = mock_client_cls.return_value
+        mock_client.models.generate_content.return_value = mock_response
+        result = utils.generate_quiz_from_transcript("Python transcript")
+        self.assertEqual(result["title"], "Python Basics Quiz")
+
+    @patch("quiz_app.api.utils.generate_quiz_from_transcript")
+    @patch("quiz_app.api.utils.transcribe_audio")
+    @patch("quiz_app.api.utils.download_audio")
+    def test_create_quiz_data_from_youtube_success(
+        self, mock_dl, mock_tr, mock_gen
+    ):
+        """Pipeline orchestrates download, transcription, and generation."""
+        mock_dl.return_value = "/tmp/audio.mp3"
+        mock_tr.return_value = "Sample transcript"
+        mock_gen.return_value = MOCK_QUIZ_DATA
+        result = utils.create_quiz_data_from_youtube("https://youtu.be/abc")
+        self.assertEqual(result, MOCK_QUIZ_DATA)
+
+    @patch("quiz_app.api.utils.transcribe_audio", return_value="")
+    @patch("quiz_app.api.utils.download_audio", return_value="/tmp/a.mp3")
+    def test_create_quiz_data_empty_transcript(self, mock_dl, mock_tr):
+        """Empty transcript raises a ValueError."""
+        with self.assertRaises(ValueError):
+            utils.create_quiz_data_from_youtube("https://youtu.be/abc")
+        mock_dl.assert_called_once()
+        mock_tr.assert_called_once()
