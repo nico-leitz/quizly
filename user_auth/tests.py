@@ -1,3 +1,5 @@
+"""Automated API endpoint tests for user_auth."""
+
 from django.contrib.auth.models import User
 from django.test import override_settings
 from django.urls import reverse
@@ -111,6 +113,20 @@ class UserAuthTests(APITestCase):
         self.client.cookies["refresh_token"] = old_refresh
         retry = self.client.post(self.refresh_url, {}, format="json")
         self.assertEqual(retry.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_logout_without_refresh_cookie(self):
+        """Logout succeeds even if the refresh cookie is missing."""
+        self.login_test_user()
+        del self.client.cookies["refresh_token"]
+        res = self.client.post(self.logout_url, {}, format="json")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+
+    def test_logout_with_invalid_refresh_cookie(self):
+        """Logout ignores a corrupted refresh cookie without failing."""
+        self.login_test_user()
+        self.client.cookies["refresh_token"] = "corrupted-token"
+        res = self.client.post(self.logout_url, {}, format="json")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
 
     def test_logout_unauthenticated(self):
         """Logout without authentication returns 401 Unauthorized."""
