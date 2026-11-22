@@ -1,8 +1,14 @@
+"""API views for generating and managing user quizzes."""
+
+import logging
+
 from rest_framework import generics, status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from yt_dlp.utils import DownloadError
+
 from quiz_app.models import Quiz
+
 from .permissions import IsQuizOwner
 from .serializers import (
     QuizCreateInputSerializer,
@@ -11,12 +17,19 @@ from .serializers import (
 )
 from .utils import create_quiz_from_url
 
+logger = logging.getLogger(__name__)
+
 
 class QuizListCreateView(generics.ListCreateAPIView):
     """List user quizzes or generate a new quiz from a YouTube URL."""
 
-    serializer_class = QuizSerializer
     permission_classes = [IsAuthenticated]
+
+    def get_serializer_class(self):
+        """Use URL input serializer for POST and QuizSerializer for GET."""
+        if self.request.method == "POST":
+            return QuizCreateInputSerializer
+        return QuizSerializer
 
     def get_queryset(self):
         """Return only quizzes owned by the authenticated user."""
@@ -26,7 +39,7 @@ class QuizListCreateView(generics.ListCreateAPIView):
 
     def post(self, request):
         """Validate URL, generate a quiz via AI, and return it."""
-        serializer = QuizCreateInputSerializer(data=request.data)
+        serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         try:
             url = serializer.validated_data["url"]
@@ -34,6 +47,7 @@ class QuizListCreateView(generics.ListCreateAPIView):
         except DownloadError:
             return Response({"detail": "Invalid YouTube URL."}, status=400)
         except Exception:
+            logger.exception("Quiz generation failed.")
             return Response({"detail": "Quiz generation failed."}, status=500)
         data = QuizCreateResponseSerializer(quiz).data
         return Response(data, status=status.HTTP_201_CREATED)

@@ -146,7 +146,7 @@ def generate_quiz_from_transcript(transcript: str) -> dict:
     config = types.GenerateContentConfig(response_mime_type="application/json")
     prompt = build_quiz_prompt(transcript)
     response = client.models.generate_content(
-        model="gemini-2.5-flash", contents=prompt, config=config)
+        model="gemini-3.8-flash", contents=prompt, config=config)
     return json.loads(response.text)
 
 
