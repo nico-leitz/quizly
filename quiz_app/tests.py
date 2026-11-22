@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 from django.contrib.auth.models import User
 from django.test import TestCase, override_settings
 from django.urls import reverse
+from google.genai import errors as genai_errors
 from rest_framework import status
 from rest_framework.test import APITestCase
 from rest_framework_simplejwt.tokens import RefreshToken
@@ -256,6 +257,27 @@ class QuizUtilsAndModelTests(TestCase):
         mock_client.models.generate_content.return_value = mock_response
         result = utils.generate_quiz_from_transcript("Python transcript")
         self.assertEqual(result["title"], "Python Basics Quiz")
+
+    @patch.dict(os.environ, {"GEMINI_API_KEY": "fake-key"})
+    @patch("quiz_app.api.utils.genai.Client")
+    def test_generate_quiz_fallback_on_api_error(self, mock_client_cls):
+        """APIError on first model falls back to the next Flash model."""
+        err = genai_errors.ServerError(503, {"error": {}}, None)
+        ok_res = MagicMock(text=json.dumps(MOCK_QUIZ_DATA))
+        mock_gen = mock_client_cls.return_value.models.generate_content
+        mock_gen.side_effect = [err, ok_res]
+        result = utils.generate_quiz_from_transcript("Python transcript")
+        self.assertEqual(result["title"], "Python Basics Quiz")
+
+    @patch.dict(os.environ, {"GEMINI_API_KEY": "fake-key"})
+    @patch("quiz_app.api.utils.genai.Client")
+    def test_generate_quiz_raises_when_all_models_fail(self, mock_client_cls):
+        """APIError is re-raised when all fallback models fail."""
+        err = genai_errors.ServerError(503, {"error": {}}, None)
+        mock_gen = mock_client_cls.return_value.models.generate_content
+        mock_gen.side_effect = err
+        with self.assertRaises(genai_errors.APIError):
+            utils.generate_quiz_from_transcript("Python transcript")
 
     @patch("quiz_app.api.utils.generate_quiz_from_transcript")
     @patch("quiz_app.api.utils.transcribe_audio")
