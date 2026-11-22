@@ -116,7 +116,7 @@ def build_quiz_prompt(transcript: str) -> str:
     Returns:
         str: Formatted prompt ready for Gemini Flash.
     """
-    return QUIZ_PROMPT_TEMPLATE.format(transcript=transcript)
+    return QUIZ_PROMPT_TEMPLATE.replace("{transcript}", transcript)
 
 
 def get_gemini_client() -> genai.Client:
