@@ -33,9 +33,9 @@ YDL_BASE_OPTIONS = {
 }
 
 GEMINI_FLASH_MODELS = (
+    "gemini-3.5-flash-lite",
+    "gemini-3.6-flash",
     "gemini-3.8-flash",
-    "gemini-flash-latest",
-    "gemini-flash-lite-latest",
 )
 
 QUIZ_PROMPT_TEMPLATE = (
@@ -126,18 +126,15 @@ def build_quiz_prompt(transcript: str) -> str:
 
 
 def get_gemini_client() -> genai.Client:
-    """Initialize and return a configured Gemini API client.
-
-    Returns:
-        genai.Client: Authenticated Google GenAI client instance.
-
-    Raises:
-        ValueError: If GEMINI_API_KEY is missing in environment variables.
-    """
+    """Initialize and return a configured Gemini API client."""
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
         raise ValueError("GEMINI_API_KEY is not set.")
-    return genai.Client(api_key=api_key)
+    http_options = types.HttpOptions(
+        timeout=30_000,
+        retry_options=types.HttpRetryOptions(attempts=1),
+    )
+    return genai.Client(api_key=api_key, http_options=http_options)
 
 
 def request_quiz_json(client: genai.Client, prompt: str) -> str:
