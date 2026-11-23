@@ -78,8 +78,8 @@ Before setting up the project, make sure the following requirements are met:
 
 ### 1. Clone the repository
 ```bash
-git clone https://github.com/nico-leitz/quizly_backend.git
-cd quizly_backend
+git clone https://github.com/nico-leitz/quizly.git
+cd quizly
 ```
 
 ### 2. Create and activate a virtual environment
